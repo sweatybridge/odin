@@ -12,114 +12,66 @@ Created on Sat Sep 19 20:55:56 2015
 @author: liangshiyu
 """
 
-from __future__ import print_function
-
-import time
-
 import torch
 from torch.nn import CrossEntropyLoss
+from torch.utils.data import DataLoader
 from torchvision.datasets import CIFAR10, CIFAR100, ImageFolder
 from torchvision.transforms import Compose, Normalize, ToTensor
 
-import calData as d
-import calMetric as m
-
-# CUDA_DEVICE = 0
-
-start = time.time()
-# loading data sets
-
-transform = Compose(
-    [
-        ToTensor(),
-        Normalize(
-            (125.3 / 255, 123.0 / 255, 113.9 / 255),
-            (63.0 / 255, 62.1 / 255.0, 66.7 / 255.0),
-        ),
-    ]
-)
-
-
-# loading neural network
-
-# Name of neural networks
-# Densenet trained on CIFAR-10:         densenet10
-# Densenet trained on CIFAR-100:        densenet100
-# Densenet trained on WideResNet-10:    wideresnet10
-# Densenet trained on WideResNet-100:   wideresnet100
-# nnName = "densenet10"
-
-# imName = "Imagenet"
-
-
-criterion = CrossEntropyLoss()
+from calData import testDataIn, testDataOut
+from calMetric import metric
 
 
 def test(nnName, dataName, CUDA_DEVICE, epsilon, temperature):
-    net1 = torch.load(
-        "../models/{}.pth".format(nnName), map_location=torch.device("cpu")
+    # loading neural netowork
+    device = (
+        torch.device(f"cuda:{CUDA_DEVICE}")
+        if torch.cuda.is_available()
+        else torch.device("cpu")
     )
-    # optimizer1 = optim.SGD(net1.parameters(), lr=0, momentum=0)
-    # net1.cuda(CUDA_DEVICE)
+    net1 = torch.load("../models/{}.pth".format(nnName), map_location=device)
 
-    if dataName != "Uniform" and dataName != "Gaussian":
-        testsetout = ImageFolder("../data/{}".format(dataName), transform=transform)
-        testloaderOut = torch.utils.data.DataLoader(
-            testsetout, batch_size=1, shuffle=False, num_workers=2
-        )
+    # loading data sets
+    transform = Compose(
+        [
+            ToTensor(),
+            Normalize(
+                (125.3 / 255, 123.0 / 255, 113.9 / 255),
+                (63.0 / 255, 62.1 / 255.0, 66.7 / 255.0),
+            ),
+        ]
+    )
 
     if nnName == "densenet10" or nnName == "wideresnet10":
         testset = CIFAR10(
             root="../data", train=False, download=True, transform=transform
         )
-        testloaderIn = torch.utils.data.DataLoader(
-            testset, batch_size=1, shuffle=False, num_workers=2
-        )
-    if nnName == "densenet100" or nnName == "wideresnet100":
+        testloaderIn = DataLoader(testset, batch_size=1, shuffle=False, num_workers=2)
+    elif nnName == "densenet100" or nnName == "wideresnet100":
         testset = CIFAR100(
             root="../data", train=False, download=True, transform=transform
         )
-        testloaderIn = torch.utils.data.DataLoader(
-            testset, batch_size=1, shuffle=False, num_workers=2
-        )
-
-    if dataName == "Gaussian":
-        d.testGaussian(
-            net1,
-            criterion,
-            CUDA_DEVICE,
-            testloaderIn,
-            testloaderIn,
-            nnName,
-            dataName,
-            epsilon,
-            temperature,
-        )
-        m.metric(nnName, dataName)
-
-    elif dataName == "Uniform":
-        d.testUni(
-            net1,
-            criterion,
-            CUDA_DEVICE,
-            testloaderIn,
-            testloaderIn,
-            nnName,
-            dataName,
-            epsilon,
-            temperature,
-        )
-        m.metric(nnName, dataName)
+        testloaderIn = DataLoader(testset, batch_size=1, shuffle=False, num_workers=2)
     else:
-        d.testData(
-            net1,
-            criterion,
-            CUDA_DEVICE,
-            testloaderIn,
-            testloaderOut,
-            nnName,
-            dataName,
-            epsilon,
-            temperature,
+        raise NotImplementedError
+
+    if dataName == "Uniform" or dataName == "Gaussian":
+        testloaderOut = testloaderIn
+    else:
+        testsetout = ImageFolder(f"../data/{dataName}", transform=transform)
+        testloaderOut = DataLoader(
+            testsetout, batch_size=1, shuffle=False, num_workers=2
         )
-        m.metric(nnName, dataName)
+
+    # loading training params
+    criterion = CrossEntropyLoss()
+    if dataName == "Uniform" or dataName == "Gaussian":
+        N = 10000
+    elif dataName == "iSUN":
+        N = 8925
+    else:
+        N = 1100
+
+    testDataIn(net1, device, criterion, testloaderIn, epsilon, temperature, N)
+    testDataOut(net1, device, criterion, testloaderOut, epsilon, temperature, N)
+    metric(nnName, dataName)

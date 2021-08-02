@@ -12,8 +12,6 @@ Created on Sat Sep 19 20:55:56 2015
 @author: liangshiyu
 """
 
-from __future__ import print_function
-
 import numpy as np
 
 
